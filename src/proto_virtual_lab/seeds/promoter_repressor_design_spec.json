@@ -1,0 +1,120 @@
+{
+  "id": "seed_design_spec_promoter_repressor",
+  "campaign_id": "seed_campaign",
+  "modality": [
+    "dna",
+    "protein",
+    "multimodal"
+  ],
+  "objective_summary": "Computationally nominate a novel synthetic promoter-repressor pair whose promoter retains predicted transcriptional activity and whose repressor is predicted to bind the intended operator more favorably than a defined off-target DNA panel.",
+  "designed_entities": [
+    {
+      "name": "synthetic_promoter_operator",
+      "sequence_type": "dna",
+      "mutable": true,
+      "length_bounds": [
+        80,
+        120
+      ],
+      "fixed_assets": []
+    },
+    {
+      "name": "hth_repressor",
+      "sequence_type": "protein",
+      "mutable": true,
+      "length_bounds": [
+        80,
+        200
+      ],
+      "fixed_assets": [
+        "natural HTH seed pool",
+        "HTH-DNA structural template panel"
+      ]
+    }
+  ],
+  "target_contexts": [
+    "Synthetic sigma70-compatible bacterial promoter containing the cognate operator."
+  ],
+  "off_target_contexts": [
+    "Shipped natural and synthetic operator panel.",
+    "Sequence-scrambled variants of the cognate operator."
+  ],
+  "success_criteria": [
+    {
+      "id": "REQ-PROMOTER-ACTIVITY",
+      "statement": "The promoter retains computational signals associated with sigma70 transcriptional activity.",
+      "measurement_type": "promoter sequence score",
+      "priority": "must"
+    },
+    {
+      "id": "REQ-OPERATOR-GEOMETRY",
+      "statement": "The promoter contains a plausible operator site that overlaps the intended regulatory region.",
+      "measurement_type": "operator motif geometry",
+      "priority": "must"
+    },
+    {
+      "id": "REQ-REPRESSOR-QUALITY",
+      "statement": "The repressor sequence has plausible composition, complexity, and fold confidence.",
+      "measurement_type": "sequence and structure quality panel",
+      "priority": "must"
+    },
+    {
+      "id": "REQ-COGNATE-INTERFACE",
+      "statement": "The predicted repressor-DNA complex supports the intended cognate interface and base contacts.",
+      "measurement_type": "protein-DNA structure confidence and contact metrics",
+      "priority": "must"
+    },
+    {
+      "id": "REQ-OFFTARGET-SPECIFICITY",
+      "statement": "The cognate operator scores more favorably than the declared off-target DNA panel.",
+      "measurement_type": "target versus off-target computational margin",
+      "priority": "must"
+    },
+    {
+      "id": "REQ-DIVERSITY",
+      "statement": "Final candidates are non-degenerate and retain meaningful sequence diversity.",
+      "measurement_type": "pairwise sequence diversity",
+      "priority": "should"
+    },
+    {
+      "id": "REQ-NOVELTY",
+      "statement": "Final candidates are checked for close similarity to known promoter and protein sequences.",
+      "measurement_type": "sequence similarity search",
+      "priority": "should"
+    }
+  ],
+  "negative_criteria": [
+    "Reject invalid biological alphabets, excessive homopolymers, and low-complexity sequences.",
+    "Reject candidates that fail required promoter, fold, interface, or specificity gates.",
+    "Do not claim experimental function, validated binding, or guaranteed orthogonality."
+  ],
+  "failure_conditions": [
+    "No candidates survive a required hard gate.",
+    "A must-have requirement is neither measured nor explicitly accepted as a limitation.",
+    "A blocking critic objection remains unresolved.",
+    "The final candidate pool collapses to duplicate or near-duplicate sequences."
+  ],
+  "required_inputs": [
+    "Pinned Proto Language and Proto Tools revisions.",
+    "Promoter seed FASTA and operator panel.",
+    "HTH seed pool and structural template panel.",
+    "Approved model access and compute budget before heavyweight execution."
+  ],
+  "compute_budget": {
+    "max_cost_usd": 50.0,
+    "max_cpu_hours": 24.0,
+    "max_gpu_hours": 8.0
+  },
+  "time_budget": {
+    "max_wall_clock_minutes": 720,
+    "deadline": null
+  },
+  "requested_candidate_count": 8,
+  "assumptions": [
+    "The campaign is a benign synthetic regulatory design exercise.",
+    "Outputs are computational hypotheses intended for experimental prioritization.",
+    "Heavyweight components will not run until their original access requirements are satisfied."
+  ],
+  "blocking_questions": [],
+  "status": "draft"
+}
