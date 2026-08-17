@@ -13,6 +13,7 @@ ArtifactId = Annotated[
     str,
     Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$"),
 ]
+Sha256Digest = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 PositiveInt = Annotated[int, Field(strict=True, gt=0)]
 StrictFloat = Annotated[float, Field(strict=True)]
 NonNegativeFloat = Annotated[float, Field(strict=True, ge=0)]
@@ -254,18 +255,115 @@ class EvidenceRecord(StrictModel):
 class ProtoComponentCandidate(StrictModel):
     registry_key: NonEmptyString
     component_type: ComponentType
+    label: NonEmptyString
+    description: NonEmptyString
+    category: str | None = None
     source_module: NonEmptyString
     version_or_commit: NonEmptyString
     config_schema: JsonObject
     required_inputs: list[NonEmptyString] = Field(default_factory=list)
+    required_assets: list[NonEmptyString] = Field(default_factory=list)
     outputs: list[NonEmptyString] = Field(default_factory=list)
+    examples: list[NonEmptyString] = Field(default_factory=list)
     compute_class: ComputeClass
     gradient_capable: StrictBool
+    uses_gpu: StrictBool
+    tools_called: list[NonEmptyString] = Field(default_factory=list)
+    tool_dependencies: list[ToolDependency] = Field(default_factory=list)
     credential_requirements: list[NonEmptyString] = Field(default_factory=list)
     mapped_requirement_ids: list[NonEmptyString] = Field(default_factory=list)
     rationale: NonEmptyString
     evidence_record_ids: list[NonEmptyString] = Field(default_factory=list)
     limitations: list[NonEmptyString] = Field(default_factory=list)
+
+
+class ToolDependency(StrictModel):
+    key: NonEmptyString
+    category: NonEmptyString
+    uses_gpu: StrictBool
+    gpu_only: StrictBool
+    device_count: NonEmptyString
+    local_only_reason: str | None = None
+    weights_access: NonEmptyString
+    output_metrics: list[NonEmptyString] = Field(default_factory=list)
+    primary_metric: str | None = None
+    license: JsonObject | None = None
+    has_example_input: StrictBool
+
+
+class ReproducibilityManifest(StrictModel):
+    generated_at: datetime
+    python_version: NonEmptyString
+    platform: NonEmptyString
+    proto_language_version: NonEmptyString
+    proto_language_commit: ArtifactId
+    proto_tools_version: NonEmptyString
+    proto_tools_commit: ArtifactId
+    lock_sha256: Sha256Digest
+    revisions_verified: StrictBool
+    model_revisions: JsonObject = Field(default_factory=dict)
+    external_tool_versions: JsonObject = Field(default_factory=dict)
+
+
+class CapabilityCatalog(StrictModel):
+    generated_at: datetime
+    manifest: ReproducibilityManifest
+    components: list[ProtoComponentCandidate]
+    counts: dict[ComponentType, int]
+
+
+class ProtoSmokeStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+
+
+class ProtoSmokeRequest(StrictModel):
+    sequence_length: Annotated[int, Field(strict=True, ge=12, le=120)] = 24
+    num_samples: Annotated[int, Field(strict=True, ge=2, le=32)] = 4
+    num_results: Annotated[int, Field(strict=True, ge=1, le=8)] = 2
+    seed: Annotated[int, Field(strict=True, ge=0, le=2**32 - 1)] = 20260817
+    timeout_seconds: Annotated[int, Field(strict=True, ge=10, le=180)] = 60
+
+    @model_validator(mode="after")
+    def validate_counts(self) -> ProtoSmokeRequest:
+        if self.num_results > self.num_samples:
+            raise ValueError("num_results cannot exceed num_samples")
+        return self
+
+
+class ProtoSmokeWorkerResult(StrictModel):
+    sequences: list[NonEmptyString] = Field(min_length=1)
+    energy_scores: list[StrictFloat] = Field(min_length=1)
+
+
+class ProtoSmokeRun(StrictModel):
+    id: ArtifactId
+    status: ProtoSmokeStatus
+    started_at: datetime
+    completed_at: datetime
+    request: ProtoSmokeRequest
+    manifest: ReproducibilityManifest
+    source_sha256: Sha256Digest
+    output_directory: NonEmptyString
+    sequences: list[NonEmptyString] = Field(min_length=1)
+    energy_scores: list[StrictFloat] = Field(min_length=1)
+    export_files: list[NonEmptyString] = Field(min_length=1)
+    export_sha256: dict[str, Sha256Digest]
+    stdout: str = ""
+    stderr: str = ""
+
+    @model_validator(mode="after")
+    def validate_result_consistency(self) -> ProtoSmokeRun:
+        if self.completed_at < self.started_at:
+            raise ValueError("completed_at cannot precede started_at")
+        if len(self.sequences) != self.request.num_results:
+            raise ValueError("sequence count must match requested num_results")
+        if len(self.energy_scores) != self.request.num_results:
+            raise ValueError("energy score count must match requested num_results")
+        if any(len(sequence) != self.request.sequence_length for sequence in self.sequences):
+            raise ValueError("sequence lengths must match the request")
+        if set(self.export_files) != set(self.export_sha256):
+            raise ValueError("export files and export hashes must identify the same artifacts")
+        return self
 
 
 class SegmentPlan(LengthBoundedModel):

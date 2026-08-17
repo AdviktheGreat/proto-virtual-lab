@@ -6,7 +6,26 @@ from fastapi import Depends, FastAPI, Header, Query, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import Field
 
-from proto_virtual_lab.models import Campaign, DesignSpec, StateTransition, StrictModel
+from proto_virtual_lab.capabilities import CapabilityIntrospector, ProtoComponentNotFoundError
+from proto_virtual_lab.models import (
+    Campaign,
+    CapabilityCatalog,
+    ComponentType,
+    DesignSpec,
+    ProtoComponentCandidate,
+    ProtoSmokeRequest,
+    ProtoSmokeRun,
+    ReproducibilityManifest,
+    StateTransition,
+    StrictModel,
+)
+from proto_virtual_lab.proto_revisions import ProtoRevisionMismatchError, require_pinned_proto
+from proto_virtual_lab.proto_smoke import (
+    ProtoSmokeBusyError,
+    ProtoSmokeExecutionError,
+    ProtoSmokeRunner,
+    ProtoSmokeRunNotFoundError,
+)
 from proto_virtual_lab.seed import load_seeded_design_spec
 from proto_virtual_lab.service import CampaignConflictError, CampaignService
 from proto_virtual_lab.settings import Settings
@@ -44,6 +63,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     repository = CampaignRepository(resolved_settings.database_path, resolved_settings.artifact_root)
     repository.initialize()
     service = CampaignService(repository)
+    capability_introspector = CapabilityIntrospector()
+    proto_smoke_runner = ProtoSmokeRunner(resolved_settings.artifact_root)
 
     app = FastAPI(
         title="Proto Virtual Lab",
@@ -52,6 +73,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.repository = repository
     app.state.service = service
+    app.state.capability_introspector = capability_introspector
+    app.state.proto_smoke_runner = proto_smoke_runner
 
     def get_repository() -> CampaignRepository:
         return repository
@@ -59,8 +82,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def get_service() -> CampaignService:
         return service
 
+    def get_capability_introspector() -> CapabilityIntrospector:
+        return capability_introspector
+
+    def get_proto_smoke_runner() -> ProtoSmokeRunner:
+        return proto_smoke_runner
+
     @app.exception_handler(RecordNotFoundError)
-    async def not_found_handler(_request: Request, error: RecordNotFoundError) -> JSONResponse:
+    @app.exception_handler(ProtoComponentNotFoundError)
+    @app.exception_handler(ProtoSmokeRunNotFoundError)
+    async def not_found_handler(_request: Request, error: LookupError) -> JSONResponse:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
             content=ErrorResponse(error="not_found", detail=str(error)).model_dump(),
@@ -76,9 +107,65 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=ErrorResponse(error="campaign_conflict", detail=str(error)).model_dump(),
         )
 
+    @app.exception_handler(ProtoRevisionMismatchError)
+    async def proto_revision_handler(_request: Request, error: ProtoRevisionMismatchError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content=ErrorResponse(error="proto_revision_mismatch", detail=str(error)).model_dump(),
+        )
+
+    @app.exception_handler(ProtoSmokeExecutionError)
+    async def proto_execution_handler(_request: Request, error: ProtoSmokeExecutionError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content=ErrorResponse(error="proto_execution", detail=str(error)).model_dump(),
+        )
+
+    @app.exception_handler(ProtoSmokeBusyError)
+    async def proto_busy_handler(_request: Request, error: ProtoSmokeBusyError) -> JSONResponse:
+        return JSONResponse(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            content=ErrorResponse(error="proto_busy", detail=str(error)).model_dump(),
+        )
+
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/proto/manifest", response_model=ReproducibilityManifest)
+    def get_proto_manifest() -> ReproducibilityManifest:
+        return require_pinned_proto()
+
+    @app.get("/proto/capabilities", response_model=CapabilityCatalog)
+    def list_proto_capabilities(
+        introspector: Annotated[CapabilityIntrospector, Depends(get_capability_introspector)],
+    ) -> CapabilityCatalog:
+        return introspector.discover()
+
+    @app.get(
+        "/proto/capabilities/{component_type}/{registry_key}",
+        response_model=ProtoComponentCandidate,
+    )
+    def get_proto_capability(
+        component_type: ComponentType,
+        registry_key: str,
+        introspector: Annotated[CapabilityIntrospector, Depends(get_capability_introspector)],
+    ) -> ProtoComponentCandidate:
+        return introspector.get(component_type, registry_key)
+
+    @app.post("/proto/smoke", response_model=ProtoSmokeRun, status_code=status.HTTP_201_CREATED)
+    def run_proto_smoke(
+        request: ProtoSmokeRequest,
+        runner: Annotated[ProtoSmokeRunner, Depends(get_proto_smoke_runner)],
+    ) -> ProtoSmokeRun:
+        return runner.run(request)
+
+    @app.get("/proto/smoke/{run_id}", response_model=ProtoSmokeRun)
+    def get_proto_smoke(
+        run_id: str,
+        runner: Annotated[ProtoSmokeRunner, Depends(get_proto_smoke_runner)],
+    ) -> ProtoSmokeRun:
+        return runner.get(run_id)
 
     @app.post("/campaigns", response_model=CampaignView, status_code=status.HTTP_201_CREATED)
     def create_campaign(

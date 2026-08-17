@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import sqlite3
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from uuid import uuid4
 
+from proto_virtual_lab.artifacts import write_json
 from proto_virtual_lab.models import Campaign, DesignSpec, StateTransition
 
 
@@ -274,16 +273,9 @@ class CampaignRepository:
     def _write_model_snapshot(
         self, campaign_id: str, filename: str, model: Campaign | DesignSpec | StateTransition
     ) -> None:
-        self._write_json(self._campaign_directory(campaign_id) / filename, model.model_dump(mode="json"))
+        write_json(self._campaign_directory(campaign_id) / filename, model.model_dump(mode="json"))
 
     def _campaign_directory(self, campaign_id: str) -> Path:
         directory = self.artifact_root / "campaigns" / campaign_id
         directory.mkdir(parents=True, exist_ok=True)
         return directory
-
-    @staticmethod
-    def _write_json(path: Path, value: object) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary_path = path.with_suffix(f"{path.suffix}.{uuid4().hex}.tmp")
-        temporary_path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        temporary_path.replace(path)

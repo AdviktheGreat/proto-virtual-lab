@@ -12,6 +12,8 @@ dependencies = [
     "fastapi>=0.116,<1",
     "pydantic>=2.11,<3",
     "pydantic-settings>=2.10,<3",
+    "proto-language @ git+https://github.com/evo-design/proto-language.git@edf64afbcf84cc7c5e4e1404418c8ef1f16c34ce",
+    "proto-tools @ git+https://github.com/evo-design/proto-tools.git@1e0bd8f5a8f4525eb5e5c736cbf25c1366929e73",
     "uvicorn>=0.35,<1",
 ]
 
@@ -29,6 +31,14 @@ proto-virtual-lab = "proto_virtual_lab.main:run"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/proto_virtual_lab"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv]
+override-dependencies = [
+    "proto-tools @ git+https://github.com/evo-design/proto-tools.git@1e0bd8f5a8f4525eb5e5c736cbf25c1366929e73",
+]
 
 [tool.pytest.ini_options]
 addopts = ["-ra", "--strict-config", "--strict-markers"]

@@ -93,3 +93,33 @@ def test_campaign_listing_is_paginated(client: TestClient) -> None:
     assert first_page.status_code == 200
     assert len(first_page.json()) == 2
     assert len(second_page.json()) == 1
+
+
+def test_proto_capabilities_and_manifest_are_exposed(client: TestClient) -> None:
+    manifest = client.get("/proto/manifest")
+    catalog = client.get("/proto/capabilities")
+    capability = client.get("/proto/capabilities/constraint/gc-content")
+    missing = client.get("/proto/capabilities/generator/not-a-real-generator")
+
+    assert manifest.status_code == 200
+    assert manifest.json()["revisions_verified"] is True
+    assert catalog.status_code == 200
+    assert catalog.json()["counts"] == {"constraint": 81, "generator": 16, "optimizer": 6}
+    assert capability.status_code == 200
+    assert capability.json()["config_schema"]["required"] == ["min_gc", "max_gc"]
+    assert missing.status_code == 404
+    assert missing.json()["error"] == "not_found"
+
+
+def test_proto_smoke_can_execute_and_replay_through_api(client: TestClient) -> None:
+    executed = client.post(
+        "/proto/smoke",
+        json={"sequence_length": 18, "num_samples": 2, "num_results": 1, "seed": 7, "timeout_seconds": 60},
+    )
+
+    assert executed.status_code == 201
+    assert executed.json()["status"] == "succeeded"
+    assert len(executed.json()["sequences"]) == 1
+    replayed = client.get(f"/proto/smoke/{executed.json()['id']}")
+    assert replayed.status_code == 200
+    assert replayed.json() == executed.json()
