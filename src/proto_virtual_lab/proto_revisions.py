@@ -30,6 +30,8 @@ def build_reproducibility_manifest() -> ReproducibilityManifest:
         tools_version,
         tools_commit,
         lock_sha256,
+        lock_source,
+        lock_verified,
         revisions_verified,
     ) = _environment_fingerprint()
     return ReproducibilityManifest(
@@ -41,6 +43,8 @@ def build_reproducibility_manifest() -> ReproducibilityManifest:
         proto_tools_version=tools_version,
         proto_tools_commit=tools_commit or "unknown",
         lock_sha256=lock_sha256,
+        lock_source=lock_source,
+        lock_verified=lock_verified,
         revisions_verified=revisions_verified,
         model_revisions={},
         external_tool_versions={},
@@ -61,19 +65,19 @@ def require_pinned_proto() -> ReproducibilityManifest:
 
 
 @cache
-def _environment_fingerprint() -> tuple[str, str | None, str, str | None, str, bool]:
+def _environment_fingerprint() -> tuple[str, str | None, str, str | None, str, str, bool, bool]:
     language_commit = _installed_commit("proto-language")
     tools_commit = _installed_commit("proto-tools")
-    lock_sha256, lock_verified = _lock_fingerprint()
-    revisions_verified = (
-        language_commit == PROTO_LANGUAGE_COMMIT and tools_commit == PROTO_TOOLS_COMMIT and lock_verified
-    )
+    lock_sha256, lock_source, lock_verified = _lock_fingerprint()
+    revisions_verified = language_commit == PROTO_LANGUAGE_COMMIT and tools_commit == PROTO_TOOLS_COMMIT
     return (
         _installed_version("proto-language"),
         language_commit,
         _installed_version("proto-tools"),
         tools_commit,
         lock_sha256,
+        lock_source,
+        lock_verified,
         revisions_verified,
     )
 
@@ -97,7 +101,7 @@ def _installed_commit(package: str) -> str | None:
     return commit_id if isinstance(commit_id, str) else None
 
 
-def _lock_fingerprint() -> tuple[str, bool]:
+def _lock_fingerprint() -> tuple[str, str, bool]:
     expected_hash = (
         files("proto_virtual_lab").joinpath("reproducibility/uv.lock.sha256").read_text(encoding="utf-8").strip()
     )
@@ -105,8 +109,8 @@ def _lock_fingerprint() -> tuple[str, bool]:
         lock_path = parent / "uv.lock"
         if lock_path.is_file():
             actual_hash = sha256_file(lock_path)
-            return actual_hash, actual_hash == expected_hash
-    return expected_hash, True
+            return actual_hash, "workspace:uv.lock", actual_hash == expected_hash
+    return expected_hash, "packaged-expected-digest", False
 
 
 __all__ = [

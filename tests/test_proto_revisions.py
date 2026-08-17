@@ -27,3 +27,5 @@ def test_declared_proto_dependencies_use_exact_verified_commits() -> None:
     assert manifest.proto_language_commit == PROTO_LANGUAGE_COMMIT
     assert manifest.proto_tools_commit == PROTO_TOOLS_COMMIT
     assert len(manifest.lock_sha256) == 64
+    assert manifest.lock_source == "workspace:uv.lock"
+    assert manifest.lock_verified is True

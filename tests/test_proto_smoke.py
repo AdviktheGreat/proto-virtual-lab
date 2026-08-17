@@ -40,6 +40,17 @@ def test_authentic_smoke_run_exports_hashes_and_replays(tmp_path: Path) -> None:
         assert hashlib.sha256(content).hexdigest() == expected_hash
 
     assert runner.get(result.id) == result
+    repeated = runner.run(result.request)
+    assert repeated.sequences == result.sequences
+    assert repeated.energy_scores == result.energy_scores
+    assert repeated.export_sha256 == result.export_sha256
+
+    legacy_run = result.model_dump(mode="json")
+    del legacy_run["manifest"]["lock_source"]
+    del legacy_run["manifest"]["lock_verified"]
+    loaded_legacy_run = ProtoSmokeRun.model_validate(legacy_run)
+    assert loaded_legacy_run.manifest.lock_source == "legacy:unrecorded"
+    assert loaded_legacy_run.manifest.lock_verified is False
 
     invalid_timestamps = result.model_dump()
     invalid_timestamps["completed_at"] = result.started_at.replace(year=result.started_at.year - 1)

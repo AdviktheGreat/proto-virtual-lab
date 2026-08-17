@@ -13,6 +13,8 @@ from proto_virtual_lab.models import (
     ComponentType,
     ComputeClass,
     ProtoComponentCandidate,
+    ProtoInputSlot,
+    SequenceType,
     ToolDependency,
 )
 from proto_virtual_lab.proto_revisions import require_pinned_proto
@@ -119,9 +121,24 @@ class CapabilityIntrospector:
             version_or_commit=proto_language_commit,
             config_schema=config_schema,
             required_inputs=self._required_inputs(component_type, spec, config_schema),
+            supported_sequence_types=[
+                SequenceType(sequence_type) for sequence_type in (getattr(spec, "supported_sequence_types", None) or [])
+            ],
+            input_type=self._input_type(component_type, spec),
+            input_slots=self._input_slots(component_type, spec),
+            allows_empty_starting_sequence=(
+                spec.allows_empty_starting_sequence if component_type is ComponentType.GENERATOR else None
+            ),
+            requires_generators=(spec.requires_generators if component_type is ComponentType.CONSTRAINT else None),
+            compatible_generators=(spec.compatible_generators if component_type is ComponentType.OPTIMIZER else None),
+            constraint_mode=spec.mode if component_type is ComponentType.CONSTRAINT else None,
+            required_constraint_mode=(
+                spec.required_constraint_mode if component_type is ComponentType.OPTIMIZER else None
+            ),
+            targets_single_segment=(spec.targets_single_segment if component_type is ComponentType.OPTIMIZER else None),
             required_assets=required_assets,
-            outputs=self._outputs(component_type, tool_dependencies),
-            examples=self._examples(component_type, spec.key),
+            outputs=self._outputs(component_type),
+            examples=self._examples(registry, spec.key),
             compute_class=self._compute_class(component_type, uses_gpu, tools_called),
             gradient_capable=self._gradient_capable(component_type, spec),
             uses_gpu=uses_gpu,
@@ -143,6 +160,23 @@ class CapabilityIntrospector:
         else:
             implementation = spec.optimizer_class
         return str(implementation.__module__)
+
+    @staticmethod
+    def _input_type(component_type: ComponentType, spec: Any) -> str | None:
+        return spec.input_type.value if component_type is ComponentType.GENERATOR else None
+
+    @staticmethod
+    def _input_slots(component_type: ComponentType, spec: Any) -> list[ProtoInputSlot]:
+        if component_type is not ComponentType.CONSTRAINT or spec.input_labels is None:
+            return []
+        return [
+            ProtoInputSlot(
+                label=str(getattr(slot, "label", slot)),
+                requires_logits=bool(getattr(slot, "requires_logits", False)),
+                requires_structure=bool(getattr(slot, "requires_structure", False)),
+            )
+            for slot in spec.input_labels
+        ]
 
     @staticmethod
     def _required_inputs(component_type: ComponentType, spec: Any, schema: dict[str, Any]) -> list[str]:
@@ -172,21 +206,27 @@ class CapabilityIntrospector:
         return assets
 
     @staticmethod
-    def _outputs(component_type: ComponentType, tools: list[ToolDependency]) -> list[str]:
+    def _outputs(component_type: ComponentType) -> list[str]:
         if component_type is ComponentType.CONSTRAINT:
-            generic = ["score", "energy", "metadata"]
-        elif component_type is ComponentType.GENERATOR:
-            generic = ["sequences"]
-        else:
-            generic = ["ranked_candidates", "energy_scores", "optimization_history"]
-        return list(dict.fromkeys(generic + [metric for tool in tools for metric in tool.output_metrics]))
+            return ["score", "metadata", "structures", "logits", "metadata_recipient"]
+        if component_type is ComponentType.GENERATOR:
+            return ["sequences"]
+        return ["ranked_candidates", "energy_scores", "optimization_history"]
 
     @staticmethod
-    def _examples(component_type: ComponentType, key: str) -> list[str]:
-        return [
-            f"proto-language registry: {component_type.value}/{key}",
-            f"configuration schema available from {component_type.value}/{key}",
-        ]
+    def _examples(registry: Any, key: str) -> list[str]:
+        docs = registry.get_docs(key)
+        docstrings = [docs.docstring]
+        if docs.config is not None:
+            docstrings.append(docs.config.docstring)
+        examples = []
+        for docstring in docstrings:
+            if not docstring:
+                continue
+            match = re.search(r"(?ms)^Examples?:\s*\n(?P<example>.+)$", docstring)
+            if match is not None:
+                examples.append(match.group("example").strip())
+        return examples
 
     @staticmethod
     def _compute_class(
@@ -261,11 +301,12 @@ class CapabilityIntrospector:
             for tool in tools
             if tool.local_only_reason is not None
         )
-        limitations.extend(
-            f"{tool.key} has restricted commercial use."
-            for tool in tools
-            if tool.license is not None and tool.license.get("commercial_use") == "restricted"
-        )
+        for tool in tools:
+            commercial_use = tool.license.get("commercial_use") if tool.license is not None else None
+            if commercial_use == "no":
+                limitations.append(f"{tool.key} prohibits commercial use.")
+            elif commercial_use == "restricted":
+                limitations.append(f"{tool.key} has restricted commercial use.")
         return limitations
 
 

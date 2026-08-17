@@ -103,6 +103,7 @@ def test_proto_capabilities_and_manifest_are_exposed(client: TestClient) -> None
 
     assert manifest.status_code == 200
     assert manifest.json()["revisions_verified"] is True
+    assert manifest.json()["lock_verified"] is True
     assert catalog.status_code == 200
     assert catalog.json()["counts"] == {"constraint": 81, "generator": 16, "optimizer": 6}
     assert capability.status_code == 200

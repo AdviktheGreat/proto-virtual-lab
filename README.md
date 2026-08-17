@@ -19,7 +19,8 @@ The current implementation provides:
 - Exact Git revision pins for Proto Language and Proto Tools.
 - Live discovery and normalized schemas for the pinned Proto constraint, generator, and optimizer registries.
 - Tool access, asset, compute, metric, and licensing metadata for capability planning.
-- Reproducibility manifests that verify installed revisions and hash the lockfile.
+- Reproducibility manifests that verify installed Proto revisions, record the expected lock digest,
+  and distinguish direct workspace-lock verification from packaged-wheel metadata.
 - A fixed, bounded, CPU-only Proto smoke campaign with authentic JSON and FASTA exports.
 
 LLM agents, Paperclip, dynamic program compilation, and heavyweight scientific execution are
@@ -35,6 +36,11 @@ intentionally deferred to later milestones.
 ```bash
 uv sync --extra dev
 ```
+
+`uv` is required because the pinned Proto Language revision still declares Proto Tools from its
+moving `main` branch. The project override and `uv.lock` replace that transitive reference with the
+reviewed Proto Tools commit. Installing the application wheel directly with a resolver that ignores
+the uv override is not a supported reproducible setup.
 
 ## Run the API
 

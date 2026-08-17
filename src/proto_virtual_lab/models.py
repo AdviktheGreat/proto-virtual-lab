@@ -262,6 +262,15 @@ class ProtoComponentCandidate(StrictModel):
     version_or_commit: NonEmptyString
     config_schema: JsonObject
     required_inputs: list[NonEmptyString] = Field(default_factory=list)
+    supported_sequence_types: list[SequenceType] = Field(default_factory=list)
+    input_type: str | None = None
+    input_slots: list[ProtoInputSlot] = Field(default_factory=list)
+    allows_empty_starting_sequence: StrictBool | None = None
+    requires_generators: list[NonEmptyString] | None = None
+    compatible_generators: list[NonEmptyString] | None = None
+    constraint_mode: str | None = None
+    required_constraint_mode: str | None = None
+    targets_single_segment: StrictBool | None = None
     required_assets: list[NonEmptyString] = Field(default_factory=list)
     outputs: list[NonEmptyString] = Field(default_factory=list)
     examples: list[NonEmptyString] = Field(default_factory=list)
@@ -275,6 +284,12 @@ class ProtoComponentCandidate(StrictModel):
     rationale: NonEmptyString
     evidence_record_ids: list[NonEmptyString] = Field(default_factory=list)
     limitations: list[NonEmptyString] = Field(default_factory=list)
+
+
+class ProtoInputSlot(StrictModel):
+    label: NonEmptyString
+    requires_logits: StrictBool
+    requires_structure: StrictBool
 
 
 class ToolDependency(StrictModel):
@@ -301,6 +316,8 @@ class ReproducibilityManifest(StrictModel):
     proto_tools_commit: ArtifactId
     lock_sha256: Sha256Digest
     revisions_verified: StrictBool
+    lock_source: NonEmptyString = "legacy:unrecorded"
+    lock_verified: StrictBool = False
     model_revisions: JsonObject = Field(default_factory=dict)
     external_tool_versions: JsonObject = Field(default_factory=dict)
 
